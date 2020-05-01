@@ -1,26 +1,51 @@
 import 'package:flutter/material.dart';
-import 'dart:async';
-import 'dart:io';
-import 'dart:convert';
+//import 'dart:async';
+//import 'dart:io';
+//import 'dart:convert';
 // In case of error for package, add the dependency in pubspec.yml and run flutter pub get in the terminal.
 import 'package:path_provider/path_provider.dart';
+import 'package:hive/hive.dart';
 import 'listview.dart';
+import 'model/note.dart';
+import 'edit.dart';
 
-void main() => runApp(MyApp());
+void main() async{
+  WidgetsFlutterBinding.ensureInitialized();
+  debugPrint('Opening Directory');
+  final directory = await getApplicationDocumentsDirectory();
+  Hive.init(directory.path);
+  Hive.registerAdapter(NoteAdapter());
+  runApp(MyApp());
+}
 
 class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
         title: 'Add Text',
+        home: FutureBuilder(
+          future: Hive.openBox('notes'),
+          builder: (BuildContext context, AsyncSnapshot snapshot) {
+            if (snapshot.connectionState == ConnectionState.done) {
+              if (snapshot.hasError)
+                return Text(snapshot.error.toString());
+              else
+                return MyCustomForm();
+            }
+            // Although opening a Box takes a very short time,
+            // we still need to return something before the Future completes.
+            else
+              return Scaffold();
+          },
+        ),
         // Start the app with the "/" named route. In this case, the app starts
         // on the FirstScreen widget.
-        initialRoute: '/',
         routes: {
           // When navigating to the "/" route, build the FirstScreen widget.
-          '/': (context) => MyCustomForm(),
+          //'/': (context) => MyCustomForm(),
           // When navigating to the "/second" route, build the SecondScreen widget.
-          '/second': (context) => ListApp(),
+          'home/second': (context) => MyAppListView(),
+          'home/third': (context) => EditText(),
         }
     );
   }
@@ -38,7 +63,6 @@ class _MyCustomFormState extends State<MyCustomForm> with SingleTickerProviderSt
   // Create a text controller and use it to retrieve the current value
   // of the TextField.
   final myController = TextEditingController();
-  final storage = FileStorage();
   bool isOpened = false;
   AnimationController _animationController;
   Animation<Color> _buttonColor;
@@ -86,6 +110,8 @@ class _MyCustomFormState extends State<MyCustomForm> with SingleTickerProviderSt
     // Clean up the controller when the widget is disposed.
     myController.dispose();
     _animationController.dispose();
+    Hive.close();
+    debugPrint('Box Closed');
     super.dispose();
   }
 
@@ -130,7 +156,7 @@ class _MyCustomFormState extends State<MyCustomForm> with SingleTickerProviderSt
                       child: Text('Save'),
                       color: Colors.green,
                       onPressed: () {
-                        storage.writeFile(myController.text);
+                        addText(Note(myController.text));
                         Navigator.pop(context);
                       },
                     )
@@ -152,7 +178,7 @@ class _MyCustomFormState extends State<MyCustomForm> with SingleTickerProviderSt
         heroTag: 'btn1',
         backgroundColor: Colors.deepPurpleAccent,
         onPressed: () {
-          Navigator.pushNamed(context, '/second');
+          Navigator.pushNamed(context, 'home/second');
         },
         tooltip: 'Switch',
         child: Icon(Icons.launch),
@@ -185,6 +211,7 @@ class _MyCustomFormState extends State<MyCustomForm> with SingleTickerProviderSt
         padding: const EdgeInsets.all(16.0),
         child: TextField(
           controller: myController,
+          enableInteractiveSelection: true,
         ),
       ),
       floatingActionButton: buildAnimation(),
@@ -215,36 +242,9 @@ class _MyCustomFormState extends State<MyCustomForm> with SingleTickerProviderSt
       ],
     );
   }
-}
-
-class FileStorage {
-  Future<String> get _localPath async {
-    final directory = await getTemporaryDirectory();
-
-    return directory.path;
-  }
-
-  Future<File> get _localFile async {
-    final path = await _localPath;
-    return File('$path/Datafile.txt');
-  }
-
-  Future<String> readFileAsString() async {
-    String contents = "";
-    final file = await _localFile;
-    if (file.existsSync()) { //Must check or error is thrown
-      debugPrint("File exists");
-      contents = await file.readAsString();
-    }
-    return contents;
-  }
-
-  Future<Null> writeFile(String text) async {
-    final file = await _localFile;
-
-    IOSink sink = file.openWrite(mode: FileMode.append);
-    sink.add(utf8.encode('$text\n')); //Use newline as the delimiter
-    await sink.flush();
-    await sink.close();
+  void addText(Note note){
+    final noteBox = Hive.box('notes');
+    noteBox.add(note);
+    debugPrint('Adding Note');
   }
 }

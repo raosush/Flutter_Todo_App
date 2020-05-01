@@ -1,8 +1,43 @@
 import 'dart:async';
-
+import 'package:hive_flutter/hive_flutter.dart';
 import 'package:flutter/material.dart';
-import 'main.dart';
+import 'package:hive/hive.dart';
 import 'package:intl/intl.dart';
+import 'package:todoapp/edit.dart';
+import 'package:todoapp/model/note.dart';
+import 'package:path_provider/path_provider.dart';
+import 'main.dart';
+
+class MyAppListView extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+        title: 'Add Text',
+        home: FutureBuilder(
+          future: Hive.openBox('notes'),
+          builder: (BuildContext context, AsyncSnapshot snapshot) {
+            if (snapshot.connectionState == ConnectionState.done) {
+              if (snapshot.hasError)
+                return Text(snapshot.error.toString());
+              else
+                return ListApp();
+            }
+            // Although opening a Box takes a very short time,
+            // we still need to return something before the Future completes.
+            else
+              return Scaffold();
+          },
+        ),
+    routes: {
+      // When navigating to the "/" route, build the FirstScreen widget.
+      //'/': (context) => MyCustomForm(),
+      // When navigating to the "/second" route, build the SecondScreen widget.
+      'home': (context) => MyApp(),
+      'home/third': (context) => EditText(),
+    }
+    );
+  }
+}
 
 class ListApp extends StatefulWidget {
   @override
@@ -10,28 +45,34 @@ class ListApp extends StatefulWidget {
 }
 
 class _ListAppState extends State<ListApp> with SingleTickerProviderStateMixin{
-  List<String> lines = [];
-  final storage = new FileStorage();
   String _timeString;
+  var box;
+
+  void loadBox() async {
+    box = await Hive.openBox('notes');
+  }
 
   @override
   void initState() {
     _timeString = _formatDateTime(DateTime.now());
     Timer.periodic(Duration(seconds: 1), (Timer t) => _getTime());
     super.initState();
-    _loadFile();
+  }
+
+  @override
+  void dispose() {
+    Hive.close();
+    super.dispose();
   }
 
   //can not make initState() async, so calling this function asynchronously
-  _loadFile() async {
+ /* _loadFile() async {
     final String readLines = await storage.readFileAsString();
     debugPrint("readLines: $readLines");
     setState(() {
       lines = readLines.split('\n'); //Escape the new line
     });
-  }
-  List<String> data = List<String>();
-  int curIndex = 0;
+  } */
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -40,7 +81,7 @@ class _ListAppState extends State<ListApp> with SingleTickerProviderStateMixin{
         backgroundColor: Colors.teal,
       ),
       body: buildList(),
-      floatingActionButton: FloatingActionButton(
+     /* floatingActionButton: FloatingActionButton(
         heroTag: 'btn_ListApp',
         backgroundColor: Colors.black,
         child: Icon(Icons.add),
@@ -69,23 +110,46 @@ class _ListAppState extends State<ListApp> with SingleTickerProviderStateMixin{
                 });
           }
         },
-      ),
+      ), */
+     floatingActionButton: FloatingActionButton(
+       tooltip: 'Go Back',
+       child: Icon(Icons.arrow_back),
+       onPressed: () {
+         Navigator.pushNamed(context, 'home');
+       },
+     ),
     );
   }
 
   Widget buildList() {
-    return ListView.builder(
-      itemCount: data.length,
-      itemBuilder: (BuildContext context, int index) {
-        return Card(
-          color: Colors.deepPurpleAccent,
-          child: Padding(
-            padding: const EdgeInsets.all(20.0),
-            child: Text(data[index], style: TextStyle(color: Colors.white)),
-          ),
-        );
-      },
-    );
+    return ValueListenableBuilder(
+        valueListenable: Hive.box('notes').listenable(),
+        builder: (context, Box notes, _) {
+          debugPrint('Adding Item to ListView');
+          return ListView.builder(
+            itemCount: notes.length,
+            itemBuilder: (context, index) {
+              final note = notes.getAt(index);
+            return ListTile(
+              title: Text(notes.getAt(index).title),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  IconButton(
+                    icon: Icon(Icons.refresh),
+                    onPressed: () {
+                      Navigator.pushNamed(context, 'home/third', arguments: HiveArguments(index));
+                    },
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.delete),
+                    onPressed: () => notes.deleteAt(index),
+                  ),
+                ],
+              ),
+            );
+          });
+    });
   }
 
   void _getTime() {
